@@ -6,24 +6,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="generator" content="xff1874 blog">
-    <title>let&#39;s build a simple interpter - xff1874 blog</title>
+    <title>let&#39;s build a simple interpter js version - xff1874 blog</title>
     <meta name="author" content="zwd">
     
     
     
-    <script type="application/ld+json">{"@context":"http://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"zwd","sameAs":["https://github.com/","http://stackoverflow.com/users","https://twitter.com/","https://facebook.com/","https://plus.google.com/","https://www.linkedin.com/profile/","mailto"],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"},"articleBody":"source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi\n","dateCreated":"2019-07-08T00:00:00+08:00","dateModified":"2019-08-21T17:48:25+08:00","datePublished":"2019-07-08T00:00:00+08:00","description":"","headline":"let's build a simple interpter","image":[],"mainEntityOfPage":{"@type":"WebPage","@id":"http://xff1874.github.io/2019/07/08/2019-07-08/"},"publisher":{"@type":"Organization","name":"zwd","sameAs":["https://github.com/","http://stackoverflow.com/users","https://twitter.com/","https://facebook.com/","https://plus.google.com/","https://www.linkedin.com/profile/","mailto"],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274","logo":{"@type":"ImageObject","url":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"}},"url":"http://xff1874.github.io/2019/07/08/2019-07-08/","keywords":"javascript, compiler"}</script>
-    <meta name="description" content="source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
+    <script type="application/ld+json">{"@context":"http://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"zwd","sameAs":["https://github.com/xff1874"],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"},"articleBody":"JS 版本source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi\n","dateCreated":"2019-07-08T00:00:00+08:00","dateModified":"2019-08-22T17:20:14+08:00","datePublished":"2019-07-08T00:00:00+08:00","description":"","headline":"let's build a simple interpter js version","image":[],"mainEntityOfPage":{"@type":"WebPage","@id":"http://xff1874.github.io/2019/07/08/2019-07-08/"},"publisher":{"@type":"Organization","name":"zwd","sameAs":["https://github.com/xff1874"],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274","logo":{"@type":"ImageObject","url":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"}},"url":"http://xff1874.github.io/2019/07/08/2019-07-08/","keywords":"javascript, compiler"}</script>
+    <meta name="description" content="JS 版本source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
 <meta name="keywords" content="javascript,compiler">
 <meta property="og:type" content="blog">
-<meta property="og:title" content="let&#39;s build a simple interpter">
+<meta property="og:title" content="let&#39;s build a simple interpter js version">
 <meta property="og:url" content="http://xff1874.github.io/2019/07/08/2019-07-08/index.html">
 <meta property="og:site_name" content="xff1874 blog">
-<meta property="og:description" content="source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
+<meta property="og:description" content="JS 版本source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
 <meta property="og:locale" content="en">
-<meta property="og:updated_time" content="2019-08-21T09:48:25.585Z">
+<meta property="og:updated_time" content="2019-08-22T09:20:14.626Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="let&#39;s build a simple interpter">
-<meta name="twitter:description" content="source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
+<meta name="twitter:title" content="let&#39;s build a simple interpter js version">
+<meta name="twitter:description" content="JS 版本source codeThe origin code is written in PythonThe author website is https://github.com/rspivak/lsbasi">
     
     
         
@@ -168,84 +168,10 @@
             
                 <li class="sidebar-button">
                     
-                        <a  class="sidebar-button-link " href="https://github.com/" target="_blank" rel="noopener" title="GitHub">
+                        <a  class="sidebar-button-link " href="https://github.com/xff1874" target="_blank" rel="noopener" title="GitHub">
                     
                         <i class="sidebar-button-icon fab fa-github" aria-hidden="true"></i>
                         <span class="sidebar-button-desc">GitHub</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link " href="http://stackoverflow.com/users" target="_blank" rel="noopener" title="Stack Overflow">
-                    
-                        <i class="sidebar-button-icon fab fa-stack-overflow" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">Stack Overflow</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link " href="https://twitter.com/" target="_blank" rel="noopener" title="Twitter">
-                    
-                        <i class="sidebar-button-icon fab fa-twitter" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">Twitter</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link " href="https://facebook.com/" target="_blank" rel="noopener" title="Facebook">
-                    
-                        <i class="sidebar-button-icon fab fa-facebook" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">Facebook</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link " href="https://plus.google.com/" target="_blank" rel="noopener" title="Google +">
-                    
-                        <i class="sidebar-button-icon fab fa-google-plus" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">Google +</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link " href="https://www.linkedin.com/profile/" target="_blank" rel="noopener" title="LinkedIn">
-                    
-                        <i class="sidebar-button-icon fab fa-linkedin" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">LinkedIn</span>
-                    </a>
-            </li>
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link "
-                             href="/mailto"
-                            title="Mail"
-                        >
-                    
-                        <i class="sidebar-button-icon fa fa-envelope" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">Mail</span>
-                    </a>
-            </li>
-            
-        </ul>
-        
-            <ul class="sidebar-buttons">
-            
-                <li class="sidebar-button">
-                    
-                        <a  class="sidebar-button-link "
-                             href="/atom.xml"
-                            
-                            title="RSS"
-                        >
-                    
-                        <i class="sidebar-button-icon fa fa-rss" aria-hidden="true"></i>
-                        <span class="sidebar-button-desc">RSS</span>
                     </a>
             </li>
             
@@ -266,7 +192,7 @@
         <div class="post-header main-content-wrap text-left">
     
         <h1 class="post-title">
-            let&#39;s build a simple interpter
+            let&#39;s build a simple interpter js version
         </h1>
     
     
@@ -285,7 +211,7 @@
     
     <div class="post-content markdown">
         <div class="main-content-wrap">
-            <p><a href="https://github.com/xff1874/lsbasi" target="_blank" rel="noopener">source code</a><br>The origin code is written in Python<br>The author website is <a href="https://github.com/rspivak/lsbasi" target="_blank" rel="noopener">https://github.com/rspivak/lsbasi</a></p>
+            <p>JS 版本<br><a href="https://github.com/xff1874/lsbasi" target="_blank" rel="noopener">source code</a><br>The origin code is written in Python<br>The author website is <a href="https://github.com/rspivak/lsbasi" target="_blank" rel="noopener">https://github.com/rspivak/lsbasi</a></p>
 
             
 
@@ -324,9 +250,9 @@
                     
                 <a
                     class="post-action-btn btn btn--default tooltip--top"
-                    href="/2018/10/17/2018-10-17/"
-                    data-tooltip="es6 backbone"
-                    aria-label="NEXT: es6 backbone"
+                    href="/2018/12/24/2018-12-14/"
+                    data-tooltip="babel 7"
+                    aria-label="NEXT: babel 7"
                 >
                     
                         <span class="hide-xs hide-sm text-small icon-mr">NEXT</span>
@@ -439,9 +365,9 @@
                     
                 <a
                     class="post-action-btn btn btn--default tooltip--top"
-                    href="/2018/10/17/2018-10-17/"
-                    data-tooltip="es6 backbone"
-                    aria-label="NEXT: es6 backbone"
+                    href="/2018/12/24/2018-12-14/"
+                    data-tooltip="babel 7"
+                    aria-label="NEXT: babel 7"
                 >
                     
                         <span class="hide-xs hide-sm text-small icon-mr">NEXT</span>
@@ -576,14 +502,14 @@
         
             <h4 id="about-card-name">zwd</h4>
         
-            <div id="about-card-bio"><p>author.bio</p>
+            <div id="about-card-bio"><p>build app with react/react native, a fan of badminton and fitness.<br> If you have any questions, please contact to <a href="mailto:zwd321081@gmail.com">zwd321081@gmail.com</a></p>
 </div>
         
         
             <div id="about-card-job">
                 <i class="fa fa-briefcase"></i>
                 <br/>
-                <p>author.job</p>
+                <p>Web developer at Netease Cloud Music Company</p>
 
             </div>
         
