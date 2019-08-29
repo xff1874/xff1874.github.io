@@ -6,19 +6,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="generator" content="xff1874 blog">
-    <title>Archives: 2019 - xff1874 blog</title>
+    <title>从零实现BI-JSON-Parser - xff1874 blog</title>
     <meta name="author" content="zwd">
     
     
     
-    <script type="application/ld+json">{}</script>
-    <meta property="og:type" content="blog">
-<meta property="og:title" content="xff1874 blog">
-<meta property="og:url" content="http://xff1874.github.io/archives/2019/index.html">
+    <script type="application/ld+json">{"@context":"http://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"zwd","sameAs":[],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"},"articleBody":"简介自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下:\n123456789&#123;    \"page\": \"dsong|ufm\", // 歌曲    \"resource\": \"song\", // 歌曲    \"resourceid\": true, // 资源id    \"target\": 111, // 不感兴趣    \"targetid\": \"button\",     \"reason\": \"\",     \"reason_type\": \"fixed\" // &#125;\n\n一种类json格式，比较不同在于：\n\n有注解\n字符串通过”|”分割符，当做数组用\nvalue为基本类型，没有object。\n\n在实际过程中发现很多奇怪的用法:\n\n不用comment，用value当注解的\n\n\n用其他比如||或者/做分割符，或者混用的。\n\n\n\n\n错误类型很多，必须有一种方法来保证格式的规范性，所以决定一个json parser来处理上面的问题。\n编译过程一般有6步\n\n词法解析(Lexical Analysis): 将源码转为一串的token\n语法解析(Syntax Analysis): 将一串的token根据语法规则转为抽象语法树(AST)\n语义解析(Semantic Analysis): 类型检查等。比如 a/b,b不能是字符串。\n中间码(Intermediate Code Generation): 为生成最终代码做准备。\n优化\n代码生成(Code Generation): 指定生成特定的机器码。\n\n对于我们的目标主要是1，2两个步骤.\n词法分析输入的是源代码，输出的是一串token.这个过程有的叫做Lexical也有的叫做Scanning。\n比如我们的源码如下，这是一个赋值语句\n1var language = \"lox\";\n\n输出的tokens应该为这里面有5个token。换句话说，token就是字符串的某一片段。我们把 var 三个字符当做一个token, =号一个字符当做一个token,”lox”当做一个token。关键在于如何分割字符串,及token相关类型。\n先定义token的数据结构\n123456class Token&#123;    constructor(type,value)&#123;        this.type = type;        this.value = value;    &#125;&#125;\n\n然后定义Token类型，这里可以参考antlr,得到如下类型\n12345678910111213141516const TokenType = &#123;  OpenBrace: \"&#123;\", //左括号  CloseBrace: \"&#125;\", //右括号  StringLiteral: \"StringLiteral\", //字符串类型  BitOr: \"|\",  SingleSlash: \"/\",  COLON: \":\",  QUOTE: '\"',  SingleLineComment: \"//\",  NUMBER: \"NUMBER\",  COMMA: \",\",  EOFILE: \"EOFILE\", //end of file character;  EOF: \"EOF\", //end token  BOOLEAN: \"BOOLEAN\",  IDENTIFIER: \"IDENTIFIER\"&#125;;\n\n定义Lexer 处理类\n1234567891011121314151617181920212223242526272829class Lexer &#123;  constructor(input) &#123;    this.input = input;    this.pos = 0;    this.currentChar = this.input[this.pos];    this.tokens = [];  &#125;  /**获取下一个字符 */  consume() &#123;    if (!this.isEnd()) &#123;      this.pos++;      this.currentChar = this.input[this.pos];    &#125; else &#123;      this.currentChar = TokenType.EOFILE;    &#125;  &#125;  isEnd() &#123;    return this.pos &gt; this.input.length - 1;  &#125;  /**匹配输入的字符，如果相等则获取下一个 */  match(inputchar) &#123;    if (this.currentChar == inputchar) &#123;      this.consume();    &#125; else &#123;      console.error(`$&#123;inputchar&#125; is not matched`);    &#125;  &#125;&#125;\n\n从名字上看，很容易猜出这几个函数的作用。接下来，我们依次读取每个字符，当碰到标点比如,或者:直接返回对应的token,当碰到”和/这种，我们就默认一个是字符串一个是comment，如果不符合就抛出报错信息，对于空白，我们直接忽略，this.pos++，往前走直到碰到一个不是空白的字符。\n1234567891011121314151617181920212223lex() &#123;    while (this.currentChar &amp;&amp; this.currentChar != TokenType.EOFILE) &#123;      this.skipWhiteSpace();      let token = \"\";      switch (this.currentChar) &#123;        case \"&#123;\":          this.consume();          token = new Token(TokenType.OpenBrace, TokenType.OpenBrace);          break;        default:          if (this.isNumber(this.currentChar)) &#123;            token = this.getNumberToken();          &#125; else if (this.isLetter(this.currentChar)) &#123;            token = this.getIdentifierToken();          &#125; else &#123;            console.error(`$&#123;this.currentChar&#125; is not a valid type`);          &#125;      &#125;      if (token) this.tokens.push(token);    &#125;    this.tokens.push(new Token(TokenType.EOF, TokenType.EOF));  &#125;\n\nisNumber和getNumberToken\n123456789101112131415isNumber(char) &#123;    const re = /\\d/g;    return re.test(char);&#125;getNumberToken() &#123;    let buffer = \"\";    while (this.isNumber(this.currentChar)&amp;&amp;!this.isEnd()) &#123;      buffer += this.currentChar;      this.consume();    &#125;    if (buffer) &#123;      return new Token(TokenType.NUMBER, buffer);    &#125;&#125;\n\n获取Number的token我们就是循环判断当前是否是数字，如果是就用字符串链接保存之前的值，这样就等到了111这个token的值。字符串的判断和上面差不多,先判断双引号进入字符串处理函数，然后不断读取下一个字符，判断每个字符是否符合string的的正则表达式，最后碰到另一个双引号结束。一般用/\\w/g这个正则来判断字符串，但是无法匹配|分隔符，所以做特殊处理。比如“a|c|d”,这种格式，我们处理成Token(a,”string”),Token(|,”bitor”),Token(c,”string”),Token(|,”bitor”),Token(d,”string”)核心代码为\n1234567891011let buffer = \"\";while (  (this.isLetter(this.currentChar) || this.currentChar == TokenType.BitOr)) &#123;  if (this.currentChar == TokenType.BitOr) &#123;    if (buffer)      this.tokens.push(new Token(TokenType.StringLiteral, buffer));    this.tokens.push(new Token(TokenType.BitOr, TokenType.BitOr));    buffer = \"\";  &#125; &#125;\n\n当碰到|分割符号时，我们判断之前是否有string buffer,如果有就返回一个string token,然后返回一个bitor(|)的token。最开始的时候，我先把”a|c|d”整个字符串拿出来a|c|d,然后用split(“|”)方法，然后循环返回string和bitor的token，发现这里不太好处理，就用了目前的方法。如果谁有其他好的思路，希望借鉴下。\n最后是comment的处理，由于comment并不是一个ast的节点，所以这里就不返回token,类似空白的。完整的lexer 代码在此\n语法解析输入一串tokens,输出抽象语法树(abstract syntax tree)。\n平时在写代码的过程中，如果我们 if 后面跟[]{}而不是()就会报错。这个是由各自语言的语法规则的。比如说js的if语法规定如下 \n123ifStatement    : If '(' expressionSequence ')' statement (Else statement)?    ;\n\nifStatement就是表示if语句语法,开始是If 这个Token,然后是字符’(‘这个Token。验证的时候就是按照这个规则来判断我们平时代码的正确性。完整版js语法规则，可以看下antlr或者ecma\n所以，我们先找到json的语法定义，然后做适当的调整,这里用的是antlr的简化并加以修改\n1234567891011121314151617181920212223242526272829grammar JSON;json    : value    ;value    : STRING(|STRING)*    | NUMBER    | obj    | &apos;true&apos;    | &apos;false&apos;    ;obj     : &quot;&#123;&quot; pair (,pair)* &quot;&#125;&quot;    ;pair    String: valueSTRING   : &apos;&quot;&apos; (ESC | SAFECODEPOINT)* &apos;&quot;&apos;   ;NUMBER   : &apos;-&apos;? INT (&apos;.&apos; [0-9] +)? EXP?   ;\n\n主要是这里\n12value    : STRING(|STRING)*\n\n默认的json语法是\n12value   : STRING\n\n这里改了这个string的语法之后，我们就能处理’a|c|d’这种格式了。\n1234&#123;    \"page\":\"song|album|portal\",    \"page2\":\"song\"&#125;\n\n比如上面冒号后面的song,有可能只是一个song,也可能是一个song|两个token，需要对|预判。这里直接采用LL(1)的语法解析。上面像value这种可以推导其他的叫做non-terminal,像”{“这种是基本格式的叫做terminal。STRING和NUMBER规则里面的ESC,SAFECODEPOINT,INT,EXP是规定了字符的范围，具体看这里。所以我们把STRING和NUMBER的右边也看成是terminal，这里简单处理。\n定义好语法规则之后，转为代码的有以下5条规则。\n\nnon-terminal。 对应函数\nterminal。 匹配当前的token类型是terminal类型，然后指针移到下一个\n|。If或者switch\n*或者+。while或者for循环\n？。 if\n\n所以根据上面的转换规则及语法。我们将json的语法转为如下。\n1234567891011121314151617181920212223242526272829303132333435363738394041424344454647484950515253545556575859606162636465class Parser &#123;  constructor(lexer) &#123;    this.lexer = lexer;    this.currentToken = lexer.getNextToken();  &#125;    /**     json    : value    ; */  paseJSON() &#123;    this.parseValue();  &#125;   /**     * value    : STRING(|STRING)*    | NUMBER    | obj    | 'true'    | 'false'    ; */  parseValue() &#123;    switch (this.currentToken.type) &#123;      case TokenType.OpenBrace:        this.parseObject();        break;      case TokenType.StringLiteral:        this.parseString();        break;      case TokenType.NUMBER:        this.parseNumber();        break;      case TokenType.TRUE:        this.eat(TokenType.TRUE);        break;      case TokenType.FLASE:        this.eat(TokenType.FALSE);        break;    &#125;  &#125;    //STRING(|STRING)*  parseString() &#123;    this.eat(TokenType.StringLiteral);    while (this.currentToken.type == TokenType.BitOr) &#123;      this.eat(TokenType.BitOr);      this.eat(TokenType.StringLiteral);    &#125;  &#125;   /**match the current token and get the next */  eat(tokenType) &#123;    if (this.currentToken.type == tokenType) &#123;      this.currentToken = this.lexer.getNextToken();    &#125; else &#123;      throw new Error(        `this.currentToken is $&#123;JSON.stringify(          this.currentToken        )&#125; doesn't match the input $&#123;tokenType&#125;`      );    &#125;  &#125;&#125;\n\n\n根据5条规则里面的第一条规则，non-terminal转为函数。所以我们就有parseJSON,parseValue,parseObject,parseString,parseNumber这几个函数。\n根据规则2,如果是terminal就匹配token类型，然后指针移动返回下一个token。所以当parseValue碰到的token类型是true和false的时候，直接调用this.eat()匹配当前的token类型，获取下一个token.\n根据规则3。parseValue解析规则的时候用了switch。\n这条规则可以参看parseString里面的while判断。\n\n根据5条语法的翻译规则和json语法，我们就可以实现一个完整的paser了，完整代码看这里\n构建ast  语法规则的转换完成之后，剩下的就比较简单了。我们只需要在每个函数里面返回对应的ast node。对应每个节点的数据类型，我参考了json-ast这个库,并做了对应的修改下面是定义的两个数据类型。  123456789101112class JsonNode &#123;  constructor(type) &#123;    this.type = type;  &#125; &#125;class JsonValue extends JsonNode &#123;  constructor() &#123;    super(\"jsonValue\");    this.children = [];  &#125;&#125;\n  JsonNode是所有节点的父节点。JsonValue继承JsonNode，有一个children的属性。完整版查看这里。  定义好每个节点的数据结构，剩下的就是在验证规则的时候在每个对应的函数返回即可,比如我们返回JsonValue对象  12345678910111213 parseValue() &#123;  let _valueObj = new AstNode.JsonValue();  const _current = this.currentToken;  switch (this.currentToken.type) &#123;    ....    case TokenType.FALSE:      this.eat(TokenType.FALSE);      _valueObj.children.push(new AstNode.JsonBoolean(_current.value));      break;  &#125;  return _valueObj;&#125;\n  完整的代码请参考github\n","dateCreated":"2019-08-26T13:26:04+08:00","dateModified":"2019-08-29T11:16:23+08:00","datePublished":"2019-08-26T13:26:04+08:00","description":"","headline":"从零实现BI-JSON-Parser","image":[],"mainEntityOfPage":{"@type":"WebPage","@id":"http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"},"publisher":{"@type":"Organization","name":"zwd","sameAs":[],"image":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274","logo":{"@type":"ImageObject","url":"https://www.gravatar.com/avatar/97cdf1e13c0a3637814ea771fec07274"}},"url":"http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"}</script>
+    <meta name="description" content="简介自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下: 123456789&amp;#123;    &quot;page&quot;: &quot;dsong|ufm&quot;, // 歌曲    &quot;resource&quot;: &quot;song&quot;, // 歌曲    &quot;resourceid&quot;: true, // 资源id    &quot;target&quot;: 111, // 不感兴趣    &quot;targetid&quot;: &quot;button&quot;,     &quot;rea">
+<meta property="og:type" content="blog">
+<meta property="og:title" content="从零实现BI-JSON-Parser">
+<meta property="og:url" content="http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/index.html">
 <meta property="og:site_name" content="xff1874 blog">
+<meta property="og:description" content="简介自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下: 123456789&amp;#123;    &quot;page&quot;: &quot;dsong|ufm&quot;, // 歌曲    &quot;resource&quot;: &quot;song&quot;, // 歌曲    &quot;resourceid&quot;: true, // 资源id    &quot;target&quot;: 111, // 不感兴趣    &quot;targetid&quot;: &quot;button&quot;,     &quot;rea">
 <meta property="og:locale" content="en">
+<meta property="og:image" content="https://p1.music.126.net/GTDZ6tpW1IBspn46k2WgUA==/109951164323598647.png">
+<meta property="og:image" content="https://p1.music.126.net/j-kDIS3_lMdf1XSih4S9oA==/109951164323601543.png">
+<meta property="og:image" content="https://p1.music.126.net/d7zfepJJ2F2bUoAoTTvCpQ==/109951164323599690.png">
+<meta property="og:image" content="https://p1.music.126.net/0osyr10fgzMWKjRfi_r63w==/109951164323596336.png">
+<meta property="og:updated_time" content="2019-08-29T03:16:23.956Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="xff1874 blog">
+<meta name="twitter:title" content="从零实现BI-JSON-Parser">
+<meta name="twitter:description" content="简介自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下: 123456789&amp;#123;    &quot;page&quot;: &quot;dsong|ufm&quot;, // 歌曲    &quot;resource&quot;: &quot;song&quot;, // 歌曲    &quot;resourceid&quot;: true, // 资源id    &quot;target&quot;: 111, // 不感兴趣    &quot;targetid&quot;: &quot;button&quot;,     &quot;rea">
+<meta name="twitter:image" content="https://p1.music.126.net/GTDZ6tpW1IBspn46k2WgUA==/109951164323598647.png">
     
     
         
@@ -35,6 +44,8 @@
     
 
     
+        
+    
 </head>
 
     <body>
@@ -44,7 +55,7 @@
 
     
 
-<header id="header" data-behavior="1">
+<header id="header" data-behavior="4">
     <i id="btn-open-sidebar" class="fa fa-lg fa-bars"></i>
     <div class="header-title">
         <a
@@ -71,7 +82,7 @@
             <!-- Define author's picture -->
 
 
-<nav id="sidebar" data-behavior="1">
+<nav id="sidebar" data-behavior="4">
     <div class="sidebar-container">
         
         
@@ -170,130 +181,22 @@
 </nav>
 
             
-            <div id="main" data-behavior="1"
+            <div id="main" data-behavior="4"
                  class="
                         hasCoverMetaIn
                         ">
                 
-    <section class="postShorten-group main-content-wrap">
+<article class="post">
     
     
-    <article class="postShorten postShorten--thumbnailimg-bottom">
-        <div class="postShorten-wrap">
-            
-            <div class="postShorten-header">
-                <h1 class="postShorten-title">
-                    
-                        <a
-                            class="link-unstyled"
-                            href="/2019/08/27/react-native-to-web/"
-                            aria-label=": react native to web"
-                        >
-                            react native to web
-                        </a>
-                    
-                </h1>
-                <div class="postShorten-meta">
-    <time datetime="2019-08-27T14:05:03+08:00">
-	
-		    Aug 27, 2019
-    	
-    </time>
+        <div class="post-header main-content-wrap text-left">
     
-</div>
-
-            </div>
-            
-                <div class="postShorten-content">
-                    <h3 id="需要处理"><a href="#需要处理" class="headerlink" title="需要处理"></a>需要处理</h3><ol>
-<li>react native jsx组件<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> &#123;</span><br><span class="line">    View, Text, Image, InteractionManager,</span><br><span class="line">    StyleSheet, Dimensions, TouchableWithoutFeedback</span><br><span class="line">&#125; <span class="keyword">from</span> <span class="string">'react-native'</span>;</span><br><span class="line"></span><br><span class="line"> &lt;TouchableWithoutFeedback onPress=&#123;<span class="keyword">this</span>._onClick&#125;&gt;</span><br><span class="line">                &lt;View style=&#123;styles.container&#125;&gt;</span><br><span class="line">                    &lt;View style=&#123;styles.leftContainer&#125;&gt;</span><br><span class="line">                    &lt;<span class="regexp">/View&gt;</span></span><br><span class="line"><span class="regexp">                &lt;/</span>View&gt;</span><br><span class="line">&lt;<span class="regexp">/TouchableWithoutFeedback&gt;</span></span><br></pre></td></tr></table></figure>
-
-</li>
-</ol>
-<p>TouchableWithoutFeedback需要处理，onPress事件需要处理。</p>
-<ol start="2">
-<li>逻辑性的</li>
-</ol>
-<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Platform.OS</span><br><span class="line">AppRegistry.registerComponent(<span class="string">'App'</span>, () =&gt; App);</span><br></pre></td></tr></table></figure>
-
-<p>无法转化，必须补上</p>
-<ol start="3">
-<li>cssInJS<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">const</span> styles = StyleSheet.create(&#123;</span><br><span class="line">    container: &#123;</span><br><span class="line">        flexDirection: <span class="string">'row'</span>,</span><br><span class="line">        marginTop: <span class="number">10</span>,</span><br><span class="line">        height: <span class="number">100</span>,</span><br><span class="line">        backgroundColor: <span class="string">'#fff'</span></span><br><span class="line">    &#125;)</span><br></pre></td></tr></table></figure>
-
-</li>
-</ol>
-<h3 id="当前方案"><a href="#当前方案" class="headerlink" title="当前方案"></a>当前方案</h3><ol>
-<li>react native for web。 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">module.exports = &#123;</span><br><span class="line">  // ...the rest of your config</span><br><span class="line"></span><br><span class="line">  resolve: &#123;</span><br><span class="line">    alias: &#123;</span><br><span class="line">      &apos;react-native$&apos;: &apos;react-native-web&apos;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">//babel-plugin-module-resolver</span><br><span class="line">&#123;</span><br><span class="line">  &quot;plugins&quot;: [</span><br><span class="line">    [&quot;module-resolver&quot;, &#123;</span><br><span class="line">      &quot;alias&quot;: &#123;</span><br><span class="line">        &quot;^react-native$&quot;: &quot;react-native-web&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;]</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-</li>
-</ol>
-<p>逻辑：通过webpack,babel等别名。将native组件一一转为web组件。<br>问题是：每个组件需要一一对应实现，工作量大。一旦出现一个新的组件就需要重新写。版本更新慢，目前只支持React Native 0.55。当前RN版本已经0.6，版本差距很大。<br>目前普遍采用的一种方法。</p>
-<ol start="2">
-<li>reactxp<br><a href="https://github.com/microsoft/reactxp" target="_blank" rel="noopener">git</a></li>
-<li>自己定义了一套DSL</li>
-</ol>
-<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> _styles = &#123;</span><br><span class="line">  main: RX.Styles.createViewStyle(&#123;</span><br><span class="line">    justifyContent: <span class="string">'center'</span>,</span><br><span class="line">    alignItems: <span class="string">'center'</span>,</span><br><span class="line">    flex: <span class="number">1</span>,</span><br><span class="line">  &#125;)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">export</span> <span class="class"><span class="keyword">class</span> <span class="title">App</span> <span class="keyword">extends</span> <span class="title">RX</span>.<span class="title">Component</span> </span>&#123;</span><br><span class="line">  public render() &#123;</span><br><span class="line">    <span class="keyword">return</span> (</span><br><span class="line">      &lt;RX.View style=&#123; _styles.main &#125;&gt;</span><br><span class="line">        &lt;RX.View&gt;</span><br><span class="line">          &lt;RX.Text style=&#123; _styles.title &#125;&gt;Welcome to  dsfs dddd &lt;RX.Text style=&#123; _styles.name &#125;&gt;ReactXP&lt;<span class="regexp">/RX.Text&gt;&lt;/</span>RX.Text&gt;</span><br><span class="line">          &lt;RX.Text style=&#123; _styles.label &#125;&gt;To <span class="keyword">get</span> started, edit /src/App.tsx&lt;/RX.Text&gt;</span><br><span class="line">        &lt;/RX.View&gt;</span><br><span class="line"></span><br><span class="line">        &lt;RX.View style=&#123; _styles.links &#125;&gt;</span><br><span class="line">          &lt;RX.Link url=&#123; <span class="string">'https://github.com/Microsoft/reactxp'</span> &#125; style=&#123; _styles.link &#125;&gt;GitHub&lt;<span class="regexp">/RX.Link&gt;</span></span><br><span class="line"><span class="regexp">          &lt;RX.Link url=&#123; 'https:/</span><span class="regexp">/microsoft.github.io/</span>reactxp<span class="string">' &#125; style=&#123; _styles.link &#125;&gt;Docs&lt;/RX.Link&gt;</span></span><br><span class="line"><span class="string">          &lt;RX.Link url=&#123; '</span>https:<span class="comment">//github.com/Microsoft/reactxp/tree/master/samples' &#125; style=&#123; _styles.link &#125;&gt;Samples&lt;/RX.Link&gt;</span></span><br><span class="line">          &lt;RX.Link url=&#123; <span class="string">'https://github.com/Microsoft/reactxp/tree/master/extensions'</span> &#125; style=&#123; _styles.link &#125;&gt;Extensions&lt;<span class="regexp">/RX.Link&gt;</span></span><br><span class="line"><span class="regexp">        &lt;/</span>RX.View&gt;</span><br><span class="line">      &lt;<span class="regexp">/RX.View&gt;</span></span><br><span class="line"><span class="regexp">    );</span></span><br><span class="line"><span class="regexp">  &#125;</span></span><br><span class="line"><span class="regexp">&#125;</span></span><br></pre></td></tr></table></figure>
-
-<ol start="2">
-<li>转为各自平台的代码<br>比如Button web和native各自实现了一次,下面是web的版本<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">export</span> <span class="class"><span class="keyword">class</span> <span class="title">Button</span> <span class="keyword">extends</span> <span class="title">ButtonBase</span> </span>&#123;</span><br><span class="line">    <span class="keyword">static</span> contextTypes = &#123;</span><br><span class="line">        hasRxButtonAscendant: PropTypes.bool,</span><br><span class="line">        focusArbitrator: PropTypes.object</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    context!: ButtonContext;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">static</span> childContextTypes = &#123;</span><br><span class="line">        hasRxButtonAscendant: PropTypes.bool</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    private _mountedButton: HTMLButtonElement | <span class="literal">null</span> = <span class="literal">null</span>;</span><br><span class="line">    private _lastMouseDownEvent: Types.SyntheticEvent | <span class="literal">undefined</span>;</span><br><span class="line">    private _ignoreTouchEnd = <span class="literal">false</span>;</span><br><span class="line">    private _ignoreClick = <span class="literal">false</span>;</span><br><span class="line">    private _longPressTimer: number | <span class="literal">undefined</span>;</span><br><span class="line">    private _isMouseOver = <span class="literal">false</span>;</span><br><span class="line">    private _isFocusedWithKeyboard = <span class="literal">false</span>;</span><br><span class="line">    private _isHoverStarted = <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-</li>
-</ol>
-<p>下面是native的实现</p>
-<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">export</span> <span class="class"><span class="keyword">class</span> <span class="title">Button</span> <span class="keyword">extends</span> <span class="title">ButtonBase</span> </span>&#123;</span><br><span class="line">    <span class="keyword">static</span> contextTypes = &#123;</span><br><span class="line">        hasRxButtonAscendant: PropTypes.bool,</span><br><span class="line">        focusArbitrator: PropTypes.object</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    context!: ButtonContext;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">static</span> childContextTypes: React.ValidationMap&lt;any&gt; = &#123;</span><br><span class="line">        hasRxButtonAscendant: PropTypes.bool</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    private _mixin_componentDidMount = RN.Touchable.Mixin.componentDidMount || noop;</span><br><span class="line">    private _mixin_componentWillUnmount = RN.Touchable.Mixin.componentWillUnmount || noop;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// These are provided by mixin applied in the constructor</span></span><br><span class="line">    touchableGetInitialState!: <span class="function"><span class="params">()</span> =&gt;</span> RN.Touchable.State;</span><br><span class="line">    touchableHandleStartShouldSetResponder!: <span class="function"><span class="params">()</span> =&gt;</span> boolean;</span><br><span class="line">    touchableHandleResponderTerminationRequest!: <span class="function"><span class="params">()</span> =&gt;</span> boolean;</span><br><span class="line">    touchableHandleResponderGrant!: <span class="function">(<span class="params">e: RN.GestureResponderEvent</span>) =&gt;</span> <span class="keyword">void</span>;</span><br><span class="line">    touchableHandleResponderMove!: <span class="function">(<span class="params">e: RN.GestureResponderEvent</span>) =&gt;</span> <span class="keyword">void</span>;</span><br><span class="line">    touchableHandleResponderRelease!: <span class="function">(<span class="params">e: RN.GestureResponderEvent</span>) =&gt;</span> <span class="keyword">void</span>;</span><br><span class="line">    touchableHandleResponderTerminate!: <span class="function">(<span class="params">e: RN.GestureResponderEvent</span>) =&gt;</span> <span class="keyword">void</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-<ol start="3">
-<li>taro<br>自己实现了一套View,命名规则遵循React Native<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> Taro, &#123; Component &#125; <span class="keyword">from</span> <span class="string">'@tarojs/taro'</span></span><br><span class="line"><span class="keyword">import</span> &#123; View, Text &#125; <span class="keyword">from</span> <span class="string">'@tarojs/components'</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">App</span> <span class="keyword">extends</span> <span class="title">Component</span></span>&#123;</span><br><span class="line"></span><br><span class="line">  render () &#123;</span><br><span class="line">    <span class="keyword">return</span> (</span><br><span class="line">      &lt;View className=<span class="string">'index'</span>&gt;</span><br><span class="line">        &lt;Text&gt;Hello world!ddddd&lt;<span class="regexp">/Text&gt;</span></span><br><span class="line"><span class="regexp">      &lt;/</span>View&gt;</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
-</li>
-</ol>
-<p>思路：可以用alias,将’react’,’react-native’改为‘@tarojs/components’。这个是for web的做法，可以借鉴。关键在于View-&gt;div的转换支持程度。</p>
-<p>问题：View-&gt;div.事件怎么办，属性怎么办，还有TexT<br>解答：主要是继承了Nerv.Component这个库虚拟dom的ts库，RN支持非常薄弱，几乎可以说没有,<br>所以RN-&gt;web这条路走不通<br>例如View 里面的onLayout这个回调函数就没有。reactxp有。</p>
-<p>Q: react native for web。怎么处理View的。也是自己实现了一套，而不是直接View-&gt;div。</p>
-<h3 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h3><ol>
-<li>reactxp这种目录格式和组织方式是我们未来统一3端的可以参考下。</li>
-<li>思路。 react-native转为reactxp.比如 view-&gt;RX.View。然后利用Rx的for web能力再在web上跑起来。也就是RN origin DSL-&gt;middle DSL(support for web)-&gt;ReactDom DSL这样的思路。这样就避免了自己直接RN DSL-&gt;React DOM DSL.工作量只要少了一大堆。而且不用碰源码。</li>
-</ol>
-
-                    
-                        
-
-
-                    
-                    
-                        <p>
-                            <a
-                                href="/2019/08/27/react-native-to-web/#post-footer"
-                                class="postShorten-excerpt_link link"
-                                aria-label=""
-                            >
-                                Comment and share
-                            </a>
-                        </p>
-                    
-                </div>
-            
-        </div>
-        
-    </article>
+        <h1 class="post-title">
+            从零实现BI-JSON-Parser
+        </h1>
     
     
-    <article class="postShorten postShorten--thumbnailimg-bottom">
-        <div class="postShorten-wrap">
-            
-            <div class="postShorten-header">
-                <h1 class="postShorten-title">
-                    
-                        <a
-                            class="link-unstyled"
-                            href="/2019/08/26/从零实现BI-JSON-Parser/"
-                            aria-label=": 从零实现BI-JSON-Parser"
-                        >
-                            从零实现BI-JSON-Parser
-                        </a>
-                    
-                </h1>
-                <div class="postShorten-meta">
+        <div class="post-meta">
     <time datetime="2019-08-26T13:26:04+08:00">
 	
 		    Aug 26, 2019
@@ -302,10 +205,13 @@
     
 </div>
 
-            </div>
-            
-                <div class="postShorten-content">
-                    <h3 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h3><p>自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下:</p>
+    
+</div>
+
+    
+    <div class="post-content markdown">
+        <div class="main-content-wrap">
+            <h3 id="简介"><a href="#简介" class="headerlink" title="简介"></a>简介</h3><p>自从埋点平台上线之后，格式问题日益严重。我们默认的BI埋点如下:</p>
 <figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="string">"page"</span>: <span class="string">"dsong|ufm"</span>, <span class="comment">// 歌曲</span></span><br><span class="line">    <span class="string">"resource"</span>: <span class="string">"song"</span>, <span class="comment">// 歌曲</span></span><br><span class="line">    <span class="string">"resourceid"</span>: <span class="literal">true</span>, <span class="comment">// 资源id</span></span><br><span class="line">    <span class="string">"target"</span>: <span class="number">111</span>, <span class="comment">// 不感兴趣</span></span><br><span class="line">    <span class="string">"targetid"</span>: <span class="string">"button"</span>, </span><br><span class="line">    <span class="string">"reason"</span>: <span class="string">""</span>, </span><br><span class="line">    <span class="string">"reason_type"</span>: <span class="string">"fixed"</span> <span class="comment">// </span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 
 <p>一种类json格式，比较不同在于：</p>
@@ -400,194 +306,117 @@
 <p>  JsonNode是所有节点的父节点。JsonValue继承JsonNode，有一个children的属性。完整版查看<a href="https://github.com/xff1874/BI-JSON-Parser/blob/master/src/Ast.js" target="_blank" rel="noopener">这里</a>。<br>  定义好每个节点的数据结构，剩下的就是在验证规则的时候在每个对应的函数返回即可,比如我们返回JsonValue对象<br>  <figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"> parseValue() &#123;</span><br><span class="line">  <span class="keyword">let</span> _valueObj = <span class="keyword">new</span> AstNode.JsonValue();</span><br><span class="line">  <span class="keyword">const</span> _current = <span class="keyword">this</span>.currentToken;</span><br><span class="line">  <span class="keyword">switch</span> (<span class="keyword">this</span>.currentToken.type) &#123;</span><br><span class="line">    ....</span><br><span class="line">    <span class="keyword">case</span> TokenType.FALSE:</span><br><span class="line">      <span class="keyword">this</span>.eat(TokenType.FALSE);</span><br><span class="line">      _valueObj.children.push(<span class="keyword">new</span> AstNode.JsonBoolean(_current.value));</span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> _valueObj;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
 <p>  完整的代码请参考<a href="https://github.com/xff1874/BI-JSON-Parser" target="_blank" rel="noopener">github</a></p>
 
-                    
-                        
-
-
-                    
-                    
-                        <p>
-                            <a
-                                href="/2019/08/26/从零实现BI-JSON-Parser/#post-footer"
-                                class="postShorten-excerpt_link link"
-                                aria-label=""
-                            >
-                                Comment and share
-                            </a>
-                        </p>
-                    
-                </div>
             
+
+
         </div>
-        
-    </article>
-    
-    
-    <article class="postShorten postShorten--thumbnailimg-bottom">
-        <div class="postShorten-wrap">
-            
-            <div class="postShorten-header">
-                <h1 class="postShorten-title">
-                    
-                        <a
-                            class="link-unstyled"
-                            href="/2019/08/22/2019-08-22/"
-                            aria-label=": bi-json-parser"
-                        >
-                            bi-json-parser
-                        </a>
-                    
-                </h1>
-                <div class="postShorten-meta">
-    <time datetime="2019-08-22T17:36:08+08:00">
-	
-		    Aug 22, 2019
-    	
-    </time>
-    
-</div>
-
-            </div>
-            
-                <div class="postShorten-content">
-                    <p>写了一个自定义 BI JSON Parser<br><a href="https://github.com/xff1874/BI-JSON-Parser" target="_blank" rel="noopener">github</a></p>
-
-                    
-                        
-
-
-                    
-                    
-                        <p>
-                            <a
-                                href="/2019/08/22/2019-08-22/#post-footer"
-                                class="postShorten-excerpt_link link"
-                                aria-label=""
-                            >
-                                Comment and share
-                            </a>
-                        </p>
-                    
-                </div>
-            
-        </div>
-        
-    </article>
-    
-    
-    <article class="postShorten postShorten--thumbnailimg-bottom">
-        <div class="postShorten-wrap">
-            
-            <div class="postShorten-header">
-                <h1 class="postShorten-title">
-                    
-                        <a
-                            class="link-unstyled"
-                            href="/2019/08/21/hello-world/"
-                            aria-label=": Hello World"
-                        >
-                            Hello World
-                        </a>
-                    
-                </h1>
-                <div class="postShorten-meta">
-    <time datetime="2019-08-21T17:27:02+08:00">
-	
-		    Aug 21, 2019
-    	
-    </time>
-    
-</div>
-
-            </div>
-            
-                <div class="postShorten-content">
-                    <p>best hexo and github page tutorial</p>
-<p><a href="https://gist.github.com/btfak/18938572f5df000ebe06fbd1872e4e39" target="_blank" rel="noopener">link</a></p>
-
-                    
-                        
-
-
-                    
-                    
-                        <p>
-                            <a
-                                href="/2019/08/21/hello-world/#post-footer"
-                                class="postShorten-excerpt_link link"
-                                aria-label=""
-                            >
-                                Comment and share
-                            </a>
-                        </p>
-                    
-                </div>
-            
-        </div>
-        
-    </article>
-    
-    
-    <article class="postShorten postShorten--thumbnailimg-bottom">
-        <div class="postShorten-wrap">
-            
-            <div class="postShorten-header">
-                <h1 class="postShorten-title">
-                    
-                        <a
-                            class="link-unstyled"
-                            href="/2019/07/08/2019-07-08/"
-                            aria-label=": let&#39;s build a simple interpter js version"
-                        >
-                            let&#39;s build a simple interpter js version
-                        </a>
-                    
-                </h1>
-                <div class="postShorten-meta">
-    <time datetime="2019-07-08T00:00:00+08:00">
-	
-		    Jul 08, 2019
-    	
-    </time>
-    
-</div>
-
-            </div>
-            
-                <div class="postShorten-content">
-                    <p>JS 版本<br><a href="https://github.com/xff1874/lsbasi" target="_blank" rel="noopener">source code</a><br>The origin code is written in Python<br>The author website is <a href="https://github.com/rspivak/lsbasi" target="_blank" rel="noopener">https://github.com/rspivak/lsbasi</a></p>
-
-                    
-                        
-
-
-                    
-                    
-                        <p>
-                            <a
-                                href="/2019/07/08/2019-07-08/#post-footer"
-                                class="postShorten-excerpt_link link"
-                                aria-label=""
-                            >
-                                Comment and share
-                            </a>
-                        </p>
-                    
-                </div>
-            
-        </div>
-        
-    </article>
-    
-    <div class="pagination-bar">
-    <ul class="pagination">
+    </div>
+    <div id="post-footer" class="post-footer main-content-wrap">
         
         
-        <li class="pagination-number">page 1 of 1</li>
+            <div class="post-actions-wrap">
+    <nav>
+        <ul class="post-actions post-action-nav">
+            <li class="post-action">
+                
+                    
+                <a
+                    class="post-action-btn btn btn--default tooltip--top"
+                    href="/2019/08/27/react-native-to-web/"
+                    data-tooltip="react native to web"
+                    aria-label="PREVIOUS: react native to web"
+                >
+                    
+                        <i class="fa fa-angle-left" aria-hidden="true"></i>
+                        <span class="hide-xs hide-sm text-small icon-ml">PREVIOUS</span>
+                    </a>
+            </li>
+            <li class="post-action">
+                
+                    
+                <a
+                    class="post-action-btn btn btn--default tooltip--top"
+                    href="/2019/08/22/2019-08-22/"
+                    data-tooltip="bi-json-parser"
+                    aria-label="NEXT: bi-json-parser"
+                >
+                    
+                        <span class="hide-xs hide-sm text-small icon-mr">NEXT</span>
+                        <i class="fa fa-angle-right" aria-hidden="true"></i>
+                    </a>
+            </li>
+        </ul>
+    </nav>
+    <ul class="post-actions post-action-share">
+        <li class="post-action hide-lg hide-md hide-sm">
+            <a
+                class="post-action-btn btn btn--default btn-open-shareoptions"
+                href="#btn-open-shareoptions"
+                aria-label="Share this post"
+            >
+                <i class="fa fa-share-alt" aria-hidden="true"></i>
+            </a>
+        </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://www.facebook.com/sharer/sharer.php?u=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Facebook"
+                    aria-label="Share on Facebook"
+                >
+                    <i class="fab fa-facebook" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://twitter.com/intent/tweet?text=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Twitter"
+                    aria-label="Share on Twitter"
+                >
+                    <i class="fab fa-twitter" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://plus.google.com/share?url=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Google+"
+                    aria-label="Share on Google+"
+                >
+                    <i class="fab fa-google-plus" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+        
+            
+        
+        <li class="post-action">
+            
+                <a class="post-action-btn btn btn--default" href="#" aria-label="Back to top">
+            
+                <i class="fa fa-list" aria-hidden="true"></i>
+            </a>
+        </li>
     </ul>
 </div>
 
-</section>
+
+        
+        
+            
+        
+    </div>
+</article>
 
 
 
@@ -598,6 +427,154 @@
 </footer>
 
             </div>
+            
+                <div id="bottom-bar" class="post-bottom-bar" data-behavior="4">
+                    <div class="post-actions-wrap">
+    <nav>
+        <ul class="post-actions post-action-nav">
+            <li class="post-action">
+                
+                    
+                <a
+                    class="post-action-btn btn btn--default tooltip--top"
+                    href="/2019/08/27/react-native-to-web/"
+                    data-tooltip="react native to web"
+                    aria-label="PREVIOUS: react native to web"
+                >
+                    
+                        <i class="fa fa-angle-left" aria-hidden="true"></i>
+                        <span class="hide-xs hide-sm text-small icon-ml">PREVIOUS</span>
+                    </a>
+            </li>
+            <li class="post-action">
+                
+                    
+                <a
+                    class="post-action-btn btn btn--default tooltip--top"
+                    href="/2019/08/22/2019-08-22/"
+                    data-tooltip="bi-json-parser"
+                    aria-label="NEXT: bi-json-parser"
+                >
+                    
+                        <span class="hide-xs hide-sm text-small icon-mr">NEXT</span>
+                        <i class="fa fa-angle-right" aria-hidden="true"></i>
+                    </a>
+            </li>
+        </ul>
+    </nav>
+    <ul class="post-actions post-action-share">
+        <li class="post-action hide-lg hide-md hide-sm">
+            <a
+                class="post-action-btn btn btn--default btn-open-shareoptions"
+                href="#btn-open-shareoptions"
+                aria-label="Share this post"
+            >
+                <i class="fa fa-share-alt" aria-hidden="true"></i>
+            </a>
+        </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://www.facebook.com/sharer/sharer.php?u=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Facebook"
+                    aria-label="Share on Facebook"
+                >
+                    <i class="fab fa-facebook" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://twitter.com/intent/tweet?text=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Twitter"
+                    aria-label="Share on Twitter"
+                >
+                    <i class="fab fa-twitter" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+            
+            
+            <li class="post-action hide-xs">
+                <a
+                    class="post-action-btn btn btn--default"
+                    target="new" href="https://plus.google.com/share?url=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                    title="Share on Google+"
+                    aria-label="Share on Google+"
+                >
+                    <i class="fab fa-google-plus" aria-hidden="true"></i>
+                </a>
+            </li>
+        
+        
+            
+        
+        <li class="post-action">
+            
+                <a class="post-action-btn btn btn--default" href="#" aria-label="Back to top">
+            
+                <i class="fa fa-list" aria-hidden="true"></i>
+            </a>
+        </li>
+    </ul>
+</div>
+
+
+                </div>
+                
+    <div id="share-options-bar" class="share-options-bar" data-behavior="4">
+        <i id="btn-close-shareoptions" class="fa fa-times"></i>
+        <ul class="share-options">
+            
+                
+                
+                <li class="share-option">
+                    <a
+                        class="share-option-btn"
+                        target="new"
+                        href="https://www.facebook.com/sharer/sharer.php?u=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                        aria-label="Share on Facebook"
+                    >
+                        <i class="fab fa-facebook" aria-hidden="true"></i><span>Share on Facebook</span>
+                    </a>
+                </li>
+            
+                
+                
+                <li class="share-option">
+                    <a
+                        class="share-option-btn"
+                        target="new"
+                        href="https://twitter.com/intent/tweet?text=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                        aria-label="Share on Twitter"
+                    >
+                        <i class="fab fa-twitter" aria-hidden="true"></i><span>Share on Twitter</span>
+                    </a>
+                </li>
+            
+                
+                
+                <li class="share-option">
+                    <a
+                        class="share-option-btn"
+                        target="new"
+                        href="https://plus.google.com/share?url=http://xff1874.github.io/2019/08/26/从零实现BI-JSON-Parser/"
+                        aria-label="Share on Google+"
+                    >
+                        <i class="fab fa-google-plus" aria-hidden="true"></i><span>Share on Google+</span>
+                    </a>
+                </li>
+            
+        </ul>
+    </div>
+
+
             
         </div>
         
@@ -639,6 +616,8 @@
 <script src="/assets/js/script-jgjkdrdanq9lb2avrdrjveqmqic7jxhbkwcsp9s3k4wfnnsqmvqdsddoddke.min.js"></script>
 <!--SCRIPTS END-->
 
+
+    
 
 
 
